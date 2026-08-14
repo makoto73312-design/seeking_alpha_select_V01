@@ -120,7 +120,6 @@ with tab1:
         if st.button("開始執行日線掃描", key="btn_scan_daily"):
             with st.spinner("下載數據並計算中，請稍候..."):
                 valid_pullbacks, df_results = scan_daily_pullback(ticker_list)
-                # 將結果存入 session_state 以保留資料
                 st.session_state['valid_pullbacks'] = valid_pullbacks
                 st.session_state['df_results_tab1'] = df_results
                 
@@ -128,7 +127,6 @@ with tab1:
         if not st.session_state['df_results_tab1'].empty:
             st.success(f"找到 {len(st.session_state['valid_pullbacks'])} 檔符合條件的股票！(已自動帶入盤中監控)")
             
-    # 顯示保留在 session_state 中的資料
     if not st.session_state['df_results_tab1'].empty:
         st.dataframe(st.session_state['df_results_tab1'], use_container_width=True)
     elif st.session_state.get('btn_scan_daily', False) and st.session_state['df_results_tab1'].empty:
@@ -199,7 +197,6 @@ with tab2:
                 if not df_signals.empty:
                     st.balloons()
 
-    # 顯示保留在 session_state 中的資料
     if not st.session_state['df_results_tab2'].empty:
         st.success("🚨 發現買進訊號！")
         st.dataframe(st.session_state['df_results_tab2'], use_container_width=True)
@@ -254,6 +251,10 @@ def verify_yesterday_signals(tickers):
                 if close_profit_pct < -2.0:
                     status = "🔴 跌破停損"
                 
+                # 計算假設每筆投入 $1,000 美元的實質美元損益
+                max_profit_dollar = (max_profit_pct / 100) * 1000
+                close_profit_dollar = (close_profit_pct / 100) * 1000
+                
                 results.append({
                     "股票": ticker,
                     "狀態": status,
@@ -261,7 +262,9 @@ def verify_yesterday_signals(tickers):
                     "今日最高價": round(today_high, 2),
                     "今日收盤價": round(today_close, 2),
                     "最大潛在獲利(%)": round(max_profit_pct, 2),
-                    "收盤帳面損益(%)": round(close_profit_pct, 2)
+                    "收盤帳面損益(%)": round(close_profit_pct, 2),
+                    "最大潛在金額($)": round(max_profit_dollar, 2),
+                    "收盤帳面金額($)": round(close_profit_dollar, 2)
                 })
         except Exception:
             pass
@@ -282,27 +285,43 @@ with tab3:
             df_verification = verify_yesterday_signals(ticker_list)
             st.session_state['df_results_tab3'] = df_verification
 
-    # 顯示保留在 session_state 中的資料，並計算總和
     if not st.session_state['df_results_tab3'].empty:
         df_show = st.session_state['df_results_tab3']
         st.success(f"昨日共有 {len(df_show)} 檔股票觸發拉回訊號，以下為今日表現：")
         
-        # 顯示表格資料，加上 % 符號美化
+        # 美化表格顯示
         df_styled = df_show.copy()
         df_styled['最大潛在獲利(%)'] = df_styled['最大潛在獲利(%)'].astype(str) + "%"
         df_styled['收盤帳面損益(%)'] = df_styled['收盤帳面損益(%)'].astype(str) + "%"
+        df_styled['最大潛在金額($)'] = "$" + df_styled['最大潛在金額($)'].astype(str)
+        df_styled['收盤帳面金額($)'] = "$" + df_styled['收盤帳面金額($)'].astype(str)
+        
         st.dataframe(df_styled, use_container_width=True)
         
-        # 計算並顯示總獲利
-        total_max_profit = df_show['最大潛在獲利(%)'].sum()
-        total_close_profit = df_show['收盤帳面損益(%)'].sum()
+        # 1. 算術平均數 (Portfolio Avg Return %)
+        avg_max_profit_pct = df_show['最大潛在獲利(%)'].mean()
+        avg_close_profit_pct = df_show['收盤帳面損益(%)'].mean()
         
-        st.markdown("### 📊 總體驗證績效總和")
+        # 2. 假設每筆投入 $1,000 美金的「累積總盈虧 ($)」
+        total_max_dollar = df_show['最大潛在金額($)'].sum()
+        total_close_dollar = df_show['收盤帳面金額($)'].sum()
+        total_capital_invested = len(df_show) * 1000
+        
+        st.markdown("### 📊 總體驗證績效統計")
+        
+        st.markdown("#### 1. 投資組合平均報酬率 (平均分配資金之真實 %)")
         col1, col2 = st.columns(2)
         with col1:
-            st.metric(label="假設全部買進：最大潛在總獲利", value=f"{total_max_profit:.2f}%")
+            st.metric(label="投資組合：最大潛在【平均】獲利 (%)", value=f"{avg_max_profit_pct:.2f}%")
         with col2:
-            st.metric(label="假設全部買進：收盤帳面總損益", value=f"{total_close_profit:.2f}%")
+            st.metric(label="投資組合：收盤帳面【平均】損益 (%)", value=f"{avg_close_profit_pct:.2f}%")
+            
+        st.markdown(f"#### 2. 實質金額模擬 (假設每檔投入 $1,000 美金，總投入 $\$1,000 \times {len(df_show)} = \$ {total_capital_invested:,}$ 美金)")
+        col3, col4 = st.columns(2)
+        with col3:
+            st.metric(label="假設每筆買 $1,000：最大潛在【累積總獲利】 ($)", value=f"${total_max_dollar:,.2f}")
+        with col4:
+            st.metric(label="假設每筆買 $1,000：收盤帳面【累積總損益】 ($)", value=f"${total_close_dollar:,.2f}")
             
     elif st.session_state.get('btn_verify_yesterday', False) and st.session_state['df_results_tab3'].empty:
         st.warning("昨日清單中【沒有】任何股票觸發拉回買進條件，因此今日無回測數據。")
