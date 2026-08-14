@@ -9,35 +9,41 @@ st.title("🚀 美股短線飆股量化監控系統")
 st.markdown("結合 Seeking Alpha 強勢股清單與 Python 量化技術指標的自動化工具。")
 
 # ==========================================
-# 1. 讀取 Google Sheet (更新為您最新的試算表 CSV 導出路徑)
+# 1. 讀取 Google Sheet (專為 A 欄純股票代號清單設計)
 # ==========================================
-# 使用您提供的 Sheet ID: 1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/edit?usp=sharing"
+# 使用您最新的 Sheet ID: 1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/export?format=csv&gid=0"
 
-# 設定快取時間為 60 秒 (1 分鐘)，確保在 Google Sheet 修改後能快速更新
+# 設定快取時間為 60 秒 (1 分鐘)
 @st.cache_data(ttl=60)
 def load_tickers(url):
     try:
-        df = pd.read_csv(url)
-        # 抓取第一欄，清理空白與空值
-        tickers = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
-        return [t for t in tickers if t and t != "NAN"]
+        # 使用 header=None 確保若 A1 就是第一個股票代號（如 NVDA）時不會被誤當成欄位標題吃掉
+        df = pd.read_csv(url, header=None)
+        
+        # 抓取 A 欄 (第 0 欄)，清理空白、轉大寫
+        raw_list = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
+        
+        # 定義常見表頭文字，若是表頭則排除，否則保留
+        ignore_keywords = ["TICKER", "TICKERS", "STOCK", "STOCKS", "代號", "股票", "SYMBOL", "SYMBOLS", "NAN"]
+        tickers = [t for t in raw_list if t and t not in ignore_keywords and not t.startswith("UNNAMED")]
+        
+        return tickers
     except Exception as e:
         st.error(f"讀取 Google Sheet 發生錯誤，請確認權限是否設為『知道連結者皆可查看』：\n{e}")
         return []
 
 st.sidebar.header("📋 觀察清單狀態")
 with st.sidebar:
-    # 新增手動刷新快取的按鈕
     if st.button("🔄 強制刷新 Google Sheet 清單"):
         st.cache_data.clear()
         st.rerun()
 
-    with st.spinner("正在載入股票清單..."):
+    with st.spinner("正在載入 A 欄股票清單..."):
         ticker_list = load_tickers(SHEET_URL)
 
     if ticker_list:
-        st.success(f"成功載入 {len(ticker_list)} 檔股票！")
+        st.success(f"成功載入 A 欄共 {len(ticker_list)} 檔股票！")
         with st.expander("查看目前追蹤的股票清單"):
             st.write(ticker_list)
     else:
