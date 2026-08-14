@@ -11,7 +11,7 @@ st.markdown("結合 Seeking Alpha 強勢股清單與 Python 量化技術指標�
 # ==========================================
 # 1. 讀取 Google Sheet (固定 CSV 網址)
 # ==========================================
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_3z3yvdog2hJlJTw_dJ07j9VIGnZsV4tOd3oeGWVLQ6Hv3HCAbAIWcnL2Nr7dvzmFb-O78ZKO195a/pub?output=csv"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/edit?usp=sharing"
 
 @st.cache_data(ttl=600)
 def load_tickers(url):
