@@ -9,41 +9,35 @@ st.title("🚀 美股短線飆股量化監控系統")
 st.markdown("結合 Seeking Alpha 強勢股清單與 Python 量化技術指標的自動化工具。")
 
 # ==========================================
-# 1. 讀取 Google Sheet (發布為 CSV 格式的網址)
+# 1. 讀取 Google Sheet (固定 CSV 網址)
 # ==========================================
-st.sidebar.header("1. 設定觀察清單")
-st.sidebar.markdown("請將 Google Sheet **發布到網路 (CSV)** 並貼上網址。")
-st.sidebar.markdown("*(請確保表單的 A 欄為股票代號 Ticker)*")
-
-default_csv_url = ""
-sheet_url = st.sidebar.text_input("Google Sheet CSV 網址", value=default_csv_url, placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv")
+# 將使用者提供的 CSV 網址寫死在程式中
+SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ_3z3yvdog2hJlJTw_dJ07j9VIGnZsV4tOd3oeGWVLQ6Hv3HCAbAIWcnL2Nr7dvzmFb-O78ZKO195a/pub?output=csv"
 
 @st.cache_data(ttl=600) # 快取 10 分鐘，避免重複讀取
 def load_tickers(url):
-    if not url:
-        return []
     try:
         df = pd.read_csv(url)
         # 假設第一欄是股票代號，清理空白與空值
         tickers = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
         return [t for t in tickers if t] # 過濾空字串
     except Exception as e:
-        st.sidebar.error(f"讀取錯誤，請確認網址是否為發布的 CSV 格式。\n{e}")
+        st.error(f"讀取 CSV 發生錯誤：\n{e}")
         return []
 
-ticker_list = load_tickers(sheet_url)
+st.header("1. 觀察清單")
+with st.spinner("正在載入股票清單..."):
+    ticker_list = load_tickers(SHEET_URL)
 
 if ticker_list:
-    st.sidebar.success(f"成功載入 {len(ticker_list)} 檔股票！")
-    with st.sidebar.expander("查看股票清單"):
+    st.success(f"成功從 Google Sheet 載入 {len(ticker_list)} 檔股票！")
+    with st.expander("查看目前追蹤的股票清單"):
         st.write(ticker_list)
 else:
-    st.sidebar.warning("請在上方輸入有效的 Google Sheet CSV 網址。")
-    st.info("💡 測試用網址 (直接複製貼上左側):
-https://docs.google.com/spreadsheets/d/e/2PACX-1vT1785m1C6F8X2K_oUUKv6g2O2_tN0pZ8A_L3Y3gD4O2r0gL4B4yQ3k4Y0Y8Y0Y8Y0Y8Y0Y8Y0Y8/pub?output=csv (這是一個假的範例，請更換為您的真實連結，或先手動在下方測試)")
-    # 預設一些假清單供使用者未輸入網址時測試
+    st.warning("無法從指定的網址載入股票清單，請確認 Google Sheet 設定是否正確。")
+    # 如果載入失敗，提供預設清單以防程式崩潰
     ticker_list = ["NVDA", "AMD", "AAPL", "MSFT", "TSLA", "PLTR"]
-    st.warning("目前使用系統預設測試清單。")
+    st.info("目前使用系統預設測試清單。")
 
 # ==========================================
 # 2. 日線拉回與量縮掃描
@@ -104,7 +98,7 @@ def scan_daily_pullback(tickers):
     status_text.text("日線掃描完成！")
     return watch_list, pd.DataFrame(results_data)
 
-st.header("第一階段：日線拉回量縮掃描 (建議開盤前執行)")
+st.header("2. 第一階段：日線拉回量縮掃描 (建議開盤前執行)")
 if st.button("開始執行日線掃描"):
     with st.spinner("下載數據並計算中，請稍候..."):
         valid_pullbacks, df_results = scan_daily_pullback(ticker_list)
@@ -165,7 +159,7 @@ def monitor_intraday_vwap(tickers):
     status_text.text("盤中監控完成！")
     return pd.DataFrame(signals_data)
 
-st.header("第二階段：盤中 VWAP 監控 (美股開盤期間執行)")
+st.header("3. 第二階段：盤中 VWAP 監控 (美股開盤期間執行)")
 st.markdown("將第一階段找到的『拉回名單』進行盤中監控，尋找突破 VWAP 且帶量的發動點。")
 
 if st.button("開始執行盤中監控"):
