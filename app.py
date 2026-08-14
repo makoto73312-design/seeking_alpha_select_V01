@@ -38,6 +38,18 @@ with st.sidebar:
         st.write(ticker_list)
 
 # ==========================================
+# 初始化 Session State (用來保存各分頁的計算結果)
+# ==========================================
+if 'df_results_tab1' not in st.session_state:
+    st.session_state['df_results_tab1'] = pd.DataFrame()
+if 'df_results_tab2' not in st.session_state:
+    st.session_state['df_results_tab2'] = pd.DataFrame()
+if 'df_results_tab3' not in st.session_state:
+    st.session_state['df_results_tab3'] = pd.DataFrame()
+if 'valid_pullbacks' not in st.session_state:
+    st.session_state['valid_pullbacks'] = []
+
+# ==========================================
 # 建立分頁 (Tabs)
 # ==========================================
 tab1, tab2, tab3 = st.tabs(["📊 第一階段：日線掃描 (盤前)", "🚀 第二階段：盤中監控 (盤中)", "✅ 策略驗證：昨日訊號追蹤"])
@@ -102,16 +114,25 @@ def scan_daily_pullback(tickers):
 with tab1:
     st.header("第一階段：日線拉回量縮掃描")
     st.markdown("建議於**每日美股開盤前**執行，找出『均線多頭、回測 10/20 日均線、且成交量大幅萎縮』的潛在飆股。")
-    if st.button("開始執行日線掃描", key="btn_scan_daily"):
-        with st.spinner("下載數據並計算中，請稍候..."):
-            valid_pullbacks, df_results = scan_daily_pullback(ticker_list)
-            st.session_state['valid_pullbacks'] = valid_pullbacks
+    
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("開始執行日線掃描", key="btn_scan_daily"):
+            with st.spinner("下載數據並計算中，請稍候..."):
+                valid_pullbacks, df_results = scan_daily_pullback(ticker_list)
+                # 將結果存入 session_state 以保留資料
+                st.session_state['valid_pullbacks'] = valid_pullbacks
+                st.session_state['df_results_tab1'] = df_results
+                
+    with col2:
+        if not st.session_state['df_results_tab1'].empty:
+            st.success(f"找到 {len(st.session_state['valid_pullbacks'])} 檔符合條件的股票！(已自動帶入盤中監控)")
             
-            if not df_results.empty:
-                st.success(f"找到 {len(valid_pullbacks)} 檔符合條件的股票！(已自動帶入盤中監控)")
-                st.dataframe(df_results, use_container_width=True)
-            else:
-                st.info("今日無符合拉回條件的標的，建議保持現金觀望。")
+    # 顯示保留在 session_state 中的資料
+    if not st.session_state['df_results_tab1'].empty:
+        st.dataframe(st.session_state['df_results_tab1'], use_container_width=True)
+    elif st.session_state.get('btn_scan_daily', False) and st.session_state['df_results_tab1'].empty:
+        st.info("今日無符合拉回條件的標的，建議保持現金觀望。")
 
 # ==========================================
 # Tab 2: 盤中 15 分鐘 VWAP 突破監控
@@ -166,19 +187,24 @@ def monitor_intraday_vwap(tickers):
 with tab2:
     st.header("第二階段：盤中 VWAP 監控")
     st.markdown("針對第一階段選出的名單，於**美股開盤期間**監控是否出現『帶量突破 VWAP』的攻擊訊號。")
+    
     if st.button("開始執行盤中監控", key="btn_scan_intraday"):
-        if 'valid_pullbacks' not in st.session_state or not st.session_state['valid_pullbacks']:
+        if not st.session_state['valid_pullbacks']:
             st.warning("請先至『第一階段』執行日線掃描，或目前沒有符合條件的股票可供監控。")
         else:
             with st.spinner("即時分析 15 分鐘線 VWAP 中..."):
                 df_signals = monitor_intraday_vwap(st.session_state['valid_pullbacks'])
+                st.session_state['df_results_tab2'] = df_signals
                 
                 if not df_signals.empty:
                     st.balloons()
-                    st.success("🚨 發現買進訊號！")
-                    st.dataframe(df_signals, use_container_width=True)
-                else:
-                    st.info("目前觀察清單中，尚未出現突破 VWAP 的訊號。請稍後再試。")
+
+    # 顯示保留在 session_state 中的資料
+    if not st.session_state['df_results_tab2'].empty:
+        st.success("🚨 發現買進訊號！")
+        st.dataframe(st.session_state['df_results_tab2'], use_container_width=True)
+    elif st.session_state.get('btn_scan_intraday', False) and st.session_state['df_results_tab2'].empty:
+        st.info("目前觀察清單中，尚未出現突破 VWAP 的訊號。請稍後再試。")
 
 # ==========================================
 # Tab 3: 策略驗證 (昨日訊號與今日表現)
@@ -194,7 +220,7 @@ def verify_yesterday_signals(tickers):
             stock = yf.Ticker(ticker)
             df = stock.history(period="60d", interval="1d")
             
-            if len(df) < 3: # 至少需要前天、昨天、今天
+            if len(df) < 3:
                 continue
                 
             df["EMA10"] = df["Close"].ewm(span=10, adjust=False).mean()
@@ -205,7 +231,6 @@ def verify_yesterday_signals(tickers):
             yesterday = df.iloc[-2]
             day_before_yesterday = df.iloc[-3]
             
-            # --- 判斷『昨日』是否符合拉回量縮買進條件 ---
             trend_ok = yesterday["EMA10"] > yesterday["EMA20"]
             near_ema10 = (abs(yesterday["Close"] - yesterday["EMA10"]) / yesterday["EMA10"]) <= 0.015
             near_ema20 = (abs(yesterday["Close"] - yesterday["EMA20"]) / yesterday["EMA20"]) <= 0.015
@@ -217,17 +242,14 @@ def verify_yesterday_signals(tickers):
             prev_vol_ratio = day_before_yesterday["Volume"] / day_before_yesterday["Vol_SMA20"]
             volume_contracted = (vol_ratio <= 0.6) or (prev_vol_ratio <= 0.6)
             
-            # 如果昨日觸發了訊號，則檢視今日的績效
             if trend_ok and is_pullback and volume_contracted:
                 buy_price = yesterday["Close"]
                 today_high = today["High"]
                 today_close = today["Close"]
                 
-                # 計算損益 (%)
                 max_profit_pct = ((today_high - buy_price) / buy_price) * 100
                 close_profit_pct = ((today_close - buy_price) / buy_price) * 100
                 
-                # 判定表現 (若盤中最高有拉升超過 1.5% 視為發動成功)
                 status = "🟢 成功發動" if max_profit_pct >= 1.5 else "🟡 橫盤震盪"
                 if close_profit_pct < -2.0:
                     status = "🔴 跌破停損"
@@ -238,8 +260,8 @@ def verify_yesterday_signals(tickers):
                     "昨日收盤 (進場參考)": round(buy_price, 2),
                     "今日最高價": round(today_high, 2),
                     "今日收盤價": round(today_close, 2),
-                    "最大潛在獲利": f"{max_profit_pct:.2f}%",
-                    "收盤帳面損益": f"{close_profit_pct:.2f}%"
+                    "最大潛在獲利(%)": round(max_profit_pct, 2),
+                    "收盤帳面損益(%)": round(close_profit_pct, 2)
                 })
         except Exception:
             pass
@@ -253,14 +275,34 @@ def verify_yesterday_signals(tickers):
 with tab3:
     st.header("策略驗證：昨日訊號今日表現")
     st.markdown("自動回測清單中的股票：**『如果我昨天在收盤前因為拉回條件買進，今天會賺還是賠？』**")
-    st.info("💡 說明：此功能會檢查昨日符合『拉回且量縮』的股票，並與今日的【最高價】與【最新收盤價】進行對比，讓您驗證策略勝率。")
+    st.info("💡 說明：此功能會檢查昨日符合『拉回且量縮』的股票，並與今日的【最高價】與【最新收盤價】進行對比。")
     
     if st.button("執行昨日訊號驗證", key="btn_verify_yesterday"):
         with st.spinner("正在回測計算歷史數據..."):
             df_verification = verify_yesterday_signals(ticker_list)
+            st.session_state['df_results_tab3'] = df_verification
+
+    # 顯示保留在 session_state 中的資料，並計算總和
+    if not st.session_state['df_results_tab3'].empty:
+        df_show = st.session_state['df_results_tab3']
+        st.success(f"昨日共有 {len(df_show)} 檔股票觸發拉回訊號，以下為今日表現：")
+        
+        # 顯示表格資料，加上 % 符號美化
+        df_styled = df_show.copy()
+        df_styled['最大潛在獲利(%)'] = df_styled['最大潛在獲利(%)'].astype(str) + "%"
+        df_styled['收盤帳面損益(%)'] = df_styled['收盤帳面損益(%)'].astype(str) + "%"
+        st.dataframe(df_styled, use_container_width=True)
+        
+        # 計算並顯示總獲利
+        total_max_profit = df_show['最大潛在獲利(%)'].sum()
+        total_close_profit = df_show['收盤帳面損益(%)'].sum()
+        
+        st.markdown("### 📊 總體驗證績效總和")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="假設全部買進：最大潛在總獲利", value=f"{total_max_profit:.2f}%")
+        with col2:
+            st.metric(label="假設全部買進：收盤帳面總損益", value=f"{total_close_profit:.2f}%")
             
-            if not df_verification.empty:
-                st.success(f"昨日共有 {len(df_verification)} 檔股票觸發拉回訊號，以下為今日表現：")
-                st.dataframe(df_verification, use_container_width=True)
-            else:
-                st.warning("昨日清單中【沒有】任何股票觸發拉回買進條件，因此今日無回測數據。")
+    elif st.session_state.get('btn_verify_yesterday', False) and st.session_state['df_results_tab3'].empty:
+        st.warning("昨日清單中【沒有】任何股票觸發拉回買進條件，因此今日無回測數據。")
