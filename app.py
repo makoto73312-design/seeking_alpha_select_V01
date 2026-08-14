@@ -12,7 +12,7 @@ st.markdown("結合 Seeking Alpha 強勢股清單與 Python 量化技術指標�
 # 1. 讀取 Google Sheet (更新為您最新的試算表 CSV 導出路徑)
 # ==========================================
 # 使用您提供的 Sheet ID: 1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/export?format=csv&gid=0"
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/edit?usp=sharing"
 
 # 設定快取時間為 60 秒 (1 分鐘)，確保在 Google Sheet 修改後能快速更新
 @st.cache_data(ttl=60)
