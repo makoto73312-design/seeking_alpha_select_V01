@@ -9,22 +9,30 @@ st.title("🚀 美股短線飆股量化監控系統")
 st.markdown("結合 Seeking Alpha 強勢股清單與 Python 量化技術指標的自動化工具。")
 
 # ==========================================
-# 1. 讀取 Google Sheet (固定 CSV 網址)
+# 1. 讀取 Google Sheet (更新為您最新的試算表 CSV 導出路徑)
 # ==========================================
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/edit?usp=sharing"
+# 使用您提供的 Sheet ID: 1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1oa4Q0XLcQ0TLDGBSh8RuQg4r88FWjq1KPMmI3ydCjjE/export?format=csv&gid=0"
 
-@st.cache_data(ttl=600)
+# 設定快取時間為 60 秒 (1 分鐘)，確保在 Google Sheet 修改後能快速更新
+@st.cache_data(ttl=60)
 def load_tickers(url):
     try:
         df = pd.read_csv(url)
+        # 抓取第一欄，清理空白與空值
         tickers = df.iloc[:, 0].dropna().astype(str).str.strip().str.upper().tolist()
-        return [t for t in tickers if t]
+        return [t for t in tickers if t and t != "NAN"]
     except Exception as e:
-        st.error(f"讀取 CSV 發生錯誤：\n{e}")
+        st.error(f"讀取 Google Sheet 發生錯誤，請確認權限是否設為『知道連結者皆可查看』：\n{e}")
         return []
 
 st.sidebar.header("📋 觀察清單狀態")
 with st.sidebar:
+    # 新增手動刷新快取的按鈕
+    if st.button("🔄 強制刷新 Google Sheet 清單"):
+        st.cache_data.clear()
+        st.rerun()
+
     with st.spinner("正在載入股票清單..."):
         ticker_list = load_tickers(SHEET_URL)
 
@@ -33,7 +41,7 @@ with st.sidebar:
         with st.expander("查看目前追蹤的股票清單"):
             st.write(ticker_list)
     else:
-        st.warning("無法載入股票，使用預設清單。")
+        st.warning("無法載入股票，請確認表單共享權限設定。目前暫用預設測試清單。")
         ticker_list = ["NVDA", "AMD", "AAPL", "MSFT", "TSLA", "PLTR"]
         st.write(ticker_list)
 
@@ -251,7 +259,6 @@ def verify_yesterday_signals(tickers):
                 if close_profit_pct < -2.0:
                     status = "🔴 跌破停損"
                 
-                # 計算假設每筆投入 $1,000 美元的實質美元損益
                 max_profit_dollar = (max_profit_pct / 100) * 1000
                 close_profit_dollar = (close_profit_pct / 100) * 1000
                 
@@ -289,7 +296,6 @@ with tab3:
         df_show = st.session_state['df_results_tab3']
         st.success(f"昨日共有 {len(df_show)} 檔股票觸發拉回訊號，以下為今日表現：")
         
-        # 美化表格顯示
         df_styled = df_show.copy()
         df_styled['最大潛在獲利(%)'] = df_styled['最大潛在獲利(%)'].astype(str) + "%"
         df_styled['收盤帳面損益(%)'] = df_styled['收盤帳面損益(%)'].astype(str) + "%"
@@ -298,11 +304,9 @@ with tab3:
         
         st.dataframe(df_styled, use_container_width=True)
         
-        # 1. 算術平均數 (Portfolio Avg Return %)
         avg_max_profit_pct = df_show['最大潛在獲利(%)'].mean()
         avg_close_profit_pct = df_show['收盤帳面損益(%)'].mean()
         
-        # 2. 假設每筆投入 $1,000 美金的「累積總盈虧 ($)」
         total_max_dollar = df_show['最大潛在金額($)'].sum()
         total_close_dollar = df_show['收盤帳面金額($)'].sum()
         total_capital_invested = len(df_show) * 1000
